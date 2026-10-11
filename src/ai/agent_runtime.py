@@ -37,7 +37,10 @@ async def _run_agent(*, name, model, instructions, payload, schema, options):
             'Microsoft Agent Framework is missing. Install requirements.txt.'
         ) from exc
 
-    chat_client = OpenAIChatClient(model=model, timeout=60)
+    try:
+        chat_client = OpenAIChatClient(model=model, timeout=60)
+    except TypeError:
+        chat_client = OpenAIChatClient(model=model)
     agent = Agent(client=chat_client, name=name, instructions=instructions)
     async with agent:
         response = await agent.run(

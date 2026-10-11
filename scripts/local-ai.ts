@@ -94,6 +94,38 @@ export function localAI(env:Record<string,string>):Plugin {
   const host=req.headers.host??'';const origin=req.headers.origin;
   if(!/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host)||origin&&origin!==`http://${host}`)return reply(403,{error:'Local same-origin access only.'});
   if(req.url==='/api/capabilities'&&req.method==='GET')return reply(200,{ai:!!env.OPENAI_API_KEY,chat:!!env.OPENAI_API_KEY,collector:true,model:env.OPENAI_MODEL||'gpt-5-mini',limit:50});
+  if(req.url==='/api/speech'&&req.method==='POST'){
+   if(!env.OPENAI_API_KEY)return reply(503,{error:'Set OPENAI_API_KEY in .env and restart the app.'});
+   if(!req.headers['content-type']?.startsWith('application/json'))return reply(415,{error:'A JSON speech request is required.'});
+   let body='';let input:string;
+   try{
+    for await(const chunk of req){body+=chunk;if(Buffer.byteLength(body)>12_000)return reply(413,{error:'The spoken answer is too long.'});}
+    const data=JSON.parse(body);
+    input=typeof data?.text==='string'?data.text.trim():'';
+    if(!input||input.length>4000)return reply(400,{error:'A short answer is required for speech playback.'});
+   }catch{return reply(400,{error:'The speech request could not be read.'});}
+   const controller=new AbortController();
+   const timer=setTimeout(()=>controller.abort(),30_000);timer.unref();
+   res.on('close',()=>{if(!res.writableEnded)controller.abort();});
+   try{
+    const provider=await fetch('https://api.openai.com/v1/audio/speech',{
+     method:'POST',headers:{Authorization:`Bearer ${env.OPENAI_API_KEY}`,'Content-Type':'application/json'},
+     body:JSON.stringify({model:'gpt-4o-mini-tts',voice:'marin',input,instructions:'Speak naturally in a warm, clear, professional voice. Use gentle intonation and an unhurried conversational pace.',response_format:'mp3'}),signal:controller.signal,
+    });
+    if(!provider.ok){
+     const message=provider.status===401?'The OpenAI API key was rejected.':provider.status===403?'This API key cannot use speech generation.':provider.status===429?'Speech generation is rate-limited or the API quota is exhausted.':'The speech service is temporarily unavailable.';
+     return reply(502,{error:message});
+    }
+    if(!provider.body)return reply(502,{error:'The speech service returned no audio.'});
+    res.statusCode=200;res.setHeader('Content-Type','audio/mpeg');
+    for await(const chunk of provider.body){if(res.destroyed)break;res.write(chunk);}
+    if(!res.destroyed&&!res.writableEnded)res.end();
+   }catch{
+    if(res.headersSent)res.destroy();
+    else reply(502,{error:controller.signal.aborted?'Speech generation timed out.':'The speech service could not be reached.'});
+   }finally{clearTimeout(timer);}
+   return;
+  }
   if(req.url.startsWith('/api/analysis/')&&req.method==='GET'){
    const jobId=req.url.slice('/api/analysis/'.length);
    if(!uuid.test(jobId))return reply(400,{error:'A valid analysis job ID is required.'});
@@ -103,6 +135,7 @@ export function localAI(env:Record<string,string>):Plugin {
   const routes:Record<string,{script:string;timeout:number;needsKey:boolean}>={
    '/api/analyze':{script:'scripts/analyze_bridge.py',timeout:analysisTimeout,needsKey:true},
    '/api/chat':{script:'scripts/chat_bridge.py',timeout:60_000,needsKey:true},
+   '/api/transcribe':{script:'scripts/transcribe_bridge.py',timeout:45_000,needsKey:true},
    '/api/report':{script:'scripts/report_bridge.py',timeout:45_000,needsKey:false},
    '/api/collect':{script:'scripts/collect_bridge.py',timeout:45_000,needsKey:false},
    '/api/bmw':{script:'scripts/bmw_bridge.py',timeout:60_000,needsKey:false},
@@ -110,13 +143,23 @@ export function localAI(env:Record<string,string>):Plugin {
   const route=routes[req.url??''];
   if(!route||req.method!=='POST')return reply(404,{error:'Unknown endpoint.'});
   const analysis=req.url==='/api/analyze';
+  const transcription=req.url==='/api/transcribe';
   const preference=Array.isArray(req.headers.prefer)?req.headers.prefer.join(','):req.headers.prefer;
   const asynchronous=analysis&&preference?.split(',').some(value=>value.trim()==='respond-async')===true;
   let body='';let data:Record<string,unknown>;
   try{
-   for await(const chunk of req){body+=chunk;if(Buffer.byteLength(body)>1_000_000)return reply(413,{error:'Request is too large.'});}
-   data=JSON.parse(body);
-   if(!data||typeof data!=='object'||Array.isArray(data))return reply(400,{error:'Invalid JSON request.'});
+   if(transcription){
+    const mimeType=String(req.headers['content-type']??'').split(';')[0].toLowerCase();
+    if(!['audio/webm','audio/mp4','audio/ogg','audio/wav'].includes(mimeType))return reply(415,{error:'Unsupported microphone recording format.'});
+    const chunks:Buffer[]=[];let size=0;
+    for await(const chunk of req){const part=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);size+=part.length;if(size>5_000_000)return reply(413,{error:'Voice recording is too large. Try a shorter question.'});chunks.push(part);}
+    if(size<100)return reply(400,{error:'No voice recording was captured. Try again.'});
+    data={audio:Buffer.concat(chunks).toString('base64'),mimeType,language:String(req.headers['x-voice-language']??'')};
+   }else{
+    for await(const chunk of req){body+=chunk;if(Buffer.byteLength(body)>1_000_000)return reply(413,{error:'Request is too large.'});}
+    data=JSON.parse(body);
+    if(!data||typeof data!=='object'||Array.isArray(data))return reply(400,{error:'Invalid JSON request.'});
+   }
    if(analysis&&(!Array.isArray(data.records)||data.records.length<1||data.records.length>50))return reply(400,{error:'Select 1–50 feedback records.'});
   }catch{return reply(400,{error:'Invalid JSON request.'});}
   let job:AnalysisJob|undefined;

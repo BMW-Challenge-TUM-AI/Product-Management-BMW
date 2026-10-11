@@ -8,13 +8,13 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {localAI} from './local-ai';
-vi.mock('node:child_process',()=>({spawn:vi.fn()}));
+vi.mock('node:child_process',()=>({spawn:vi.fn(),spawnSync:vi.fn(()=>({status:0}))}));
 type Middleware=(req:IncomingMessage,res:ServerResponse,next:()=>void)=>void;
 class Reply extends EventEmitter {
  statusCode=200;writableEnded=false;destroyed=false;body='';flushed=false;headers:Record<string,string>={};
  setHeader(name:string,value:string){this.headers[name]=value;}
  flushHeaders(){this.flushed=true;}
- write(value:string){this.body+=value;return true;}
+ write(value:string|Uint8Array){this.body+=typeof value==='string'?value:Buffer.from(value).toString('utf8');return true;}
  end(value=''){this.body+=value;this.writableEnded=true;}
 }
 const temporaryDirectories:string[]=[];
@@ -74,6 +74,43 @@ describe('local analysis stream transport',()=>{
  it('returns an explicit error for an incomplete child response',async()=>{
   const {child,request}=setup();const reply=await request();child.emit('close',0);
   expect(JSON.parse(reply.body)).toEqual({type:'error',error:'Analysis stopped before returning a complete result.'});
+ });
+});
+describe('local voice transcription transport',()=>{
+ it('rejects unsupported uploads and forwards a bounded recording to Python',async()=>{
+  const {child,send}=setup();
+  const unsupported=await send('/api/transcribe','POST','recording',{'content-type':'text/plain'});
+  expect(unsupported.statusCode).toBe(415);
+  expect(vi.mocked(spawn)).not.toHaveBeenCalled();
+
+  const accepted=await send('/api/transcribe','POST','x'.repeat(200),{'content-type':'audio/webm'});
+  expect(vi.mocked(spawn)).toHaveBeenCalledOnce();
+  expect(vi.mocked(spawn).mock.calls[0][1]).toContain('scripts/transcribe_bridge.py');
+  const payload=JSON.parse(child.stdin.read()?.toString()??'{}');
+  expect(payload.mimeType).toBe('audio/webm');
+  expect(Buffer.from(payload.audio,'base64').length).toBeGreaterThan(100);
+  child.stdout.write(JSON.stringify({text:'What needs attention?'}));child.emit('close',0);
+  expect(JSON.parse(accepted.body)).toEqual({text:'What needs attention?'});
+ });
+});
+describe('local speech playback transport',()=>{
+ it('proxies bounded answer text to speech without sending the key to the browser',async()=>{
+  const fetchMock=vi.spyOn(globalThis,'fetch').mockResolvedValue(new Response(Buffer.from('test-mp3'),{status:200}));
+  try{
+   const {send}=setup();
+   const invalid=await send('/api/speech','POST',{text:''},{'content-type':'application/json'});
+   expect(invalid.statusCode).toBe(400);expect(fetchMock).not.toHaveBeenCalled();
+   const reply=await send('/api/speech','POST',{text:'Hello from the project.'},{'content-type':'application/json'});
+   await vi.waitFor(()=>expect(reply.writableEnded).toBe(true));
+   expect(reply.statusCode).toBe(200);
+   expect(reply.headers['Content-Type']).toBe('audio/mpeg');
+   expect(reply.body).toBe('test-mp3');
+   expect(fetchMock.mock.calls[0][0]).toBe('https://api.openai.com/v1/audio/speech');
+   const options=fetchMock.mock.calls[0][1] as RequestInit;
+   expect((options.headers as Record<string,string>).Authorization).toBe('Bearer test-only');
+   expect(JSON.parse(String(options.body))).toMatchObject({model:'gpt-4o-mini-tts',voice:'marin',input:'Hello from the project.'});
+   expect(reply.body).not.toContain('test-only');
+  }finally{fetchMock.mockRestore();}
  });
 });
 

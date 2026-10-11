@@ -172,6 +172,11 @@ def _validate_payload(payload: dict) -> tuple[dict, list[dict], dict, dict]:
 
 def _provider_error(error: Exception) -> AssistantError:
     """Classify failures without exposing provider bodies, request details or keys."""
+    inner = getattr(error, 'inner_exception', None)
+    if inner is None and getattr(error, 'args', None):
+        inner = next((item for item in error.args if isinstance(item, Exception)), None)
+    if inner is not None and inner is not error:
+        return _provider_error(inner)
     if type(error).__name__ == 'RuntimeError' and 'Agent Framework is missing' in str(error):
         return AssistantError('Install the Python dependencies from requirements.txt, then restart the app.', 'missing_dependency')
     name = type(error).__name__
@@ -194,6 +199,20 @@ def _provider_error(error: Exception) -> AssistantError:
     if name in {'LengthFinishReasonError', 'ValidationError'}:
         return AssistantError('The assistant could not finish a valid answer. Retry with a narrower question.', 'invalid_response', True)
     return AssistantError('The assistant is temporarily unavailable. Retry, or use the local project summary.', 'unavailable', True)
+
+
+def _exact_source_quote(source: str, proposed: str) -> str | None:
+    quote = proposed.strip()
+    if quote in source:
+        return quote
+    quote = quote.strip('"\'\u201c\u201d\u2018\u2019').strip()
+    if quote.endswith(('...', '\u2026')):
+        quote = quote.rstrip('.\u2026').rstrip()
+    if not quote:
+        return None
+    pattern = r'\s+'.join(re.escape(part) for part in quote.split())
+    match = re.search(pattern, source, flags=re.IGNORECASE)
+    return source[match.start():match.end()] if match else None
 
 
 _INSTRUCTIONS = (
@@ -285,11 +304,14 @@ def answer_question(payload: dict, *, client=None) -> dict:
 
     citations, seen_citations = [], set()
     for citation in draft.citations:
-        if citation.source_id not in sources or not citation.quote.strip() or len(citation.quote) > 2_000 or citation.quote not in sources[citation.source_id]:
+        if citation.source_id not in sources or not citation.quote.strip() or len(citation.quote) > 2_000:
             raise AssistantError('A quotation did not match its source record. Retry to get a verified answer.', 'unsupported_citation', True)
-        key = (citation.source_id, citation.quote)
+        quote = _exact_source_quote(sources[citation.source_id], citation.quote)
+        if quote is None:
+            raise AssistantError('A quotation did not match its source record. Retry to get a verified answer.', 'unsupported_citation', True)
+        key = (citation.source_id, quote)
         if key not in seen_citations:
-            citations.append(citation.model_dump())
+            citations.append({'source_id': citation.source_id, 'quote': quote})
             seen_citations.add(key)
 
     references, seen_references = [], set()
