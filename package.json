@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --configLoader runner --host 127.0.0.1",
     "build": "tsc -b && vite build --configLoader runner",
+    "start": "vite preview --configLoader runner --host 0.0.0.0 --port $PORT",
     "preview": "vite preview --configLoader runner --host 127.0.0.1",
     "test": "vitest run --configLoader runner",
     "test:e2e": "node scripts/e2e.mjs",
