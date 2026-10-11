@@ -1,6 +1,6 @@
 import {useState} from 'react';
 import SourceOverview from '../components/SourceOverview';
-import {ArrowRight,ArrowUpRight,Check,CheckCheck,Clock3,Database,Download,FileText,Flag,Layers3,Play,Plus,ShieldCheck,Sparkles,TriangleAlert} from 'lucide-react';
+import {ArrowRight,ArrowUpRight,Check,CheckCheck,Clock3,Database,Download,FileText,Flag,Layers3,ShieldCheck,Sparkles,TriangleAlert} from 'lucide-react';
 import {ResponsiveContainer,BarChart,Bar,XAxis,YAxis,Tooltip,PieChart,Pie,Cell} from 'recharts';
 import {useApp} from '../context';
 import {scoreRequirement,priorityFor,evidenceLevel} from '../lib/scoring';

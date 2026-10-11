@@ -16,4 +16,4 @@ export interface ScoringModel { version:number; weights:Record<Dimension,number>
 export interface EvidenceRequest { id:string; projectId:string; requirementId:string; text:string; status:'Open'|'Resolved'; createdAt:string }
 export interface AnalysisRun { id:string; projectId:string; datasets:string[]; contextDatasets?:string[]; at:string; mode:'Demo'|'AI'; findingIds:string[]; requirementIds:string[]; coverage?:{first:number;last:number;total:number;batch:number;batches:number}; metrics?:{seconds:number;api_calls:number;input_tokens:number;output_tokens:number;reasoning_tokens:number;model:string} }
 export interface Workspace { schemaVersion:1; projects:Project[]; datasets:Dataset[]; findings:Finding[]; requirements:Requirement[]; audit:AuditEvent[]; model:ScoringModel; requests:EvidenceRequest[]; runs:AnalysisRun[]; revision:number }
-export type Page = 'Overview'|'Evidence Explorer'|'Requirements'|'Prioritization'|'Review Queue'|'Audit Trail'|'Data Sources'|'Settings';
+export type Page = 'Overview'|'World View'|'Market Comparison'|'Evidence Explorer'|'Requirements'|'Prioritization'|'Review Queue'|'Audit Trail'|'Data Sources'|'Settings';
