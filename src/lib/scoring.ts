@@ -1,7 +1,8 @@
 import { dimensions, type Finding, type Priority, type Requirement, type ScoringModel, type Scores } from '../types';
+export const DEFAULT_REQUIREMENT_SCORE=3;
 export function scoreRequirement(scores:Scores, model:ScoringModel):number|null {
-  if(dimensions.some(d=>scores[d]===null || !Number.isFinite(scores[d]) || scores[d]!<1 || scores[d]!>5)) return null;
-  return Math.round(dimensions.reduce((sum,d)=>sum+model.weights[d]*scores[d]!/5,0)*100)/100;
+  if(dimensions.some(d=>scores[d]!==null&&(!Number.isFinite(scores[d]) || scores[d]!<1 || scores[d]!>5))) return null;
+  return Math.round(dimensions.reduce((sum,d)=>sum+model.weights[d]*(scores[d]??DEFAULT_REQUIREMENT_SCORE)/5,0)*100)/100;
 }
 export function priorityFor(score:number|null, model:ScoringModel):Priority|null { return score===null?null:score>=model.thresholds.p1?'P1':score>=model.thresholds.p2?'P2':'P3'; }
 export function evidenceLevel(req:Requirement, findings:Finding[]):'Strong'|'Moderate'|'Weak' {

@@ -12,6 +12,23 @@ function database():Promise<IDBDatabase>{return new Promise((resolve,reject)=>{c
 async function readSnapshot():Promise<Workspace|undefined>{const db=await database();try{return await new Promise((resolve,reject)=>{const request=db.transaction(DB_STORE,'readonly').objectStore(DB_STORE).get(STORAGE_KEY);request.onsuccess=()=>resolve(request.result as Workspace|undefined);request.onerror=()=>reject(request.error);});}finally{db.close();}}
 async function writeSnapshot(value:Workspace):Promise<void>{const db=await database();try{await new Promise<void>((resolve,reject)=>{const transaction=db.transaction(DB_STORE,'readwrite');transaction.objectStore(DB_STORE).put(value,STORAGE_KEY);transaction.oncomplete=()=>resolve();transaction.onerror=()=>reject(transaction.error);transaction.onabort=()=>reject(transaction.error);});}finally{db.close();}}
 function validateSnapshot(data:Workspace):Workspace{if(data.schemaVersion!==1||!Array.isArray(data.projects)||!Array.isArray(data.datasets)||!Array.isArray(data.requirements)||!Array.isArray(data.audit))throw new Error('The saved workspace is incompatible. Export your browser data before clearing storage.');return data;}
+const suppliedProjects:Workspace['projects']=[
+ {id:'BMW-PROJECT-F70-EU',name:'BMW 1 Series F70 · Europe',derivative:'BMW 1 Series F70',market:'Europe',horizon:'Source review'},
+ {id:'BMW-PROJECT-F70-US',name:'BMW 1 Series F70 · United States',derivative:'BMW 1 Series F70',market:'United States',horizon:'Source review'},
+ {id:'BMW-PROJECT-F70-CN',name:'BMW 1 Series F70 · China',derivative:'BMW 1 Series F70',market:'China',horizon:'Source review'},
+ {id:'BMW-PROJECT-G60-EU',name:'BMW 5 Series G60 · Europe',derivative:'BMW 5 Series G60',market:'Europe',horizon:'Source review'},
+ {id:'BMW-PROJECT-G60-US',name:'BMW 5 Series G60 · United States',derivative:'BMW 5 Series G60',market:'United States',horizon:'Source review'},
+ {id:'BMW-PROJECT-G68-CN',name:'BMW 5 Series G68 · China',derivative:'BMW 5 Series G68',market:'China',horizon:'Source review'},
+ {id:'BMW-PROJECT-G70-EU',name:'BMW 7 Series G70 · Europe',derivative:'BMW 7 Series G70',market:'Europe',horizon:'Source review'},
+ {id:'BMW-PROJECT-G70-US',name:'BMW 7 Series G70 · United States',derivative:'BMW 7 Series G70',market:'United States',horizon:'Source review'},
+ {id:'BMW-PROJECT-G70-CN',name:'BMW 7 Series G70 · China',derivative:'BMW 7 Series G70',market:'China',horizon:'Source review'},
+];
+function normalizeProjects(data:Workspace):Workspace{
+ const projects=data.projects.map(project=>({...project,name:`${project.derivative} · ${project.market}`}));
+ const existing=new Set(projects.map(project=>project.id));
+ const requirements=data.requirements.map(requirement=>({...requirement,scores:{impact:requirement.scores.impact??3,frequency:requirement.scores.frequency??3,strategy:requirement.scores.strategy??3,evidence:requirement.scores.evidence??3,feasibility:requirement.scores.feasibility??3}}));
+ return {...data,projects:[...projects,...suppliedProjects.filter(project=>!existing.has(project.id)).map(project=>({...project}))],requirements};
+}
 function removeSyntheticWorkspace(data:Workspace):Workspace|null{
  const hasSynthetic=data.datasets.some(d=>d.synthetic)||data.findings.some(f=>f.synthetic)||data.requirements.some(r=>r.synthetic);
  if(!hasSynthetic)return data;
@@ -40,7 +57,7 @@ export async function loadWorkspace():Promise<Workspace>{
  let stored:Workspace|undefined;
  try{stored=await readSnapshot();}catch{/* Older browsers can still use their existing local-storage snapshot. */}
  if(!stored){const raw=localStorage.getItem(STORAGE_KEY);if(raw)stored=validateSnapshot(JSON.parse(raw) as Workspace);}
- if(stored){const cleaned=removeSyntheticWorkspace(validateSnapshot(stored));if(cleaned){if(cleaned!==stored)await saveWorkspace(cleaned);if(!cleaned.datasets.length){const sourced=await sourceWorkspace();if(sourced.datasets.length){await saveWorkspace(sourced);return sourced;}}return cleaned;}}
+ if(stored){const cleaned=removeSyntheticWorkspace(validateSnapshot(stored));if(cleaned){const normalized=normalizeProjects(cleaned);if(normalized!==stored)await saveWorkspace(normalized);if(!normalized.datasets.length){const sourced=await sourceWorkspace();if(sourced.datasets.length){const seeded=normalizeProjects(sourced);await saveWorkspace(seeded);return seeded;}}return normalized;}}
  const initial=await sourceWorkspace();await saveWorkspace(initial);return initial;
 }
 export async function saveWorkspace(s:Workspace):Promise<void>{const json=JSON.stringify(s);try{await writeSnapshot(JSON.parse(json) as Workspace);}catch(error){try{localStorage.setItem(STORAGE_KEY,json);return;}catch{throw error;}}if(json.length<1_000_000){try{localStorage.setItem(STORAGE_KEY,json);}catch{localStorage.removeItem(STORAGE_KEY);}}else localStorage.removeItem(STORAGE_KEY);}

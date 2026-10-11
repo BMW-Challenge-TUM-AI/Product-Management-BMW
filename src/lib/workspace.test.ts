@@ -6,7 +6,7 @@ import {makeDataset,normalizeProvidedStudy} from './ingestion';
 import {deriveClusterSources,validateClusters,validateRequirementLinks,validateSignals} from '../../supabase/functions/_shared/ai-validation';
 describe('Explainable scoring',()=>{
  it('calculates weighted scores and applies precise boundaries',()=>{const s=createTestWorkspace();expect(scoreRequirement(s.requirements[0].scores,s.model)).toBe(90);expect(priorityFor(75,s.model)).toBe('P1');expect(priorityFor(74.99,s.model)).toBe('P2');expect(priorityFor(55,s.model)).toBe('P2');expect(priorityFor(54.99,s.model)).toBe('P3');});
- it('does not silently replace unknown or invalid ratings',()=>{const s=createTestWorkspace();expect(scoreRequirement(s.requirements[6].scores,s.model)).toBeNull();expect(scoreRequirement({...s.requirements[0].scores,impact:6},s.model)).toBeNull();expect(priorityFor(null,s.model)).toBeNull();});
+ it('uses a neutral 3/5 default for missing ratings and rejects invalid ratings',()=>{const s=createTestWorkspace();expect(scoreRequirement(s.requirements[6].scores,s.model)).toBe(70);expect(scoreRequirement({...s.requirements[0].scores,impact:6},s.model)).toBeNull();expect(priorityFor(70,s.model)).toBe('P2');});
  it('validates model totals and threshold order',()=>{const s=createTestWorkspace();expect(validateModel(s.model)).toBeNull();expect(validateModel({...s.model,weights:{...s.model.weights,impact:31}})).toBeTruthy();expect(validateModel({...s.model,thresholds:{p1:50,p2:55}})).toBeTruthy();});
 });
 describe('Decision and evidence traceability',()=>{

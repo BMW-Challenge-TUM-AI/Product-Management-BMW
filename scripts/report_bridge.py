@@ -18,7 +18,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import KeepTogether, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 INK = colors.HexColor('#182F41')
 BLUE = colors.HexColor('#215774')
@@ -29,6 +29,129 @@ PAGE_WIDTH, PAGE_HEIGHT = A4
 MARGIN = 43
 WIDTH = PAGE_WIDTH - MARGIN * 2
 DIMENSIONS = [('impact', 'Impact'), ('frequency', 'Frequency'), ('strategy', 'Strategy'), ('evidence', 'Evidence'), ('feasibility', 'Feasibility')]
+
+
+def build_compact_pdf(data: dict) -> tuple[bytes, str]:
+    """Build a decision brief capped at three deliberate pages."""
+    project, summary = data['project'], data['summary']
+    font_directory = Path(reportlab.__file__).parent / 'fonts'
+    for name, filename in [('Report', 'Vera.ttf'), ('Report-Bold', 'VeraBd.ttf'), ('Report-Italic', 'VeraIt.ttf')]:
+        if name not in pdfmetrics.getRegisteredFontNames():
+            pdfmetrics.registerFont(TTFont(name, str(font_directory / filename)))
+    pdfmetrics.registerFontFamily('Report', normal='Report', bold='Report-Bold', italic='Report-Italic', boldItalic='Report-Bold')
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name='BriefTitle', fontName='Report-Bold', fontSize=21, leading=25, textColor=INK, spaceAfter=5))
+    styles.add(ParagraphStyle(name='BriefSub', fontName='Report', fontSize=9, leading=12, textColor=MUTED, spaceAfter=8))
+    styles.add(ParagraphStyle(name='BriefSection', fontName='Report-Bold', fontSize=12, leading=15, textColor=INK, spaceBefore=8, spaceAfter=5, keepWithNext=True))
+    styles.add(ParagraphStyle(name='BriefBody', fontName='Report', fontSize=7.6, leading=9.6, textColor=INK, spaceAfter=4))
+    styles.add(ParagraphStyle(name='BriefSmall', parent=styles['BriefBody'], fontSize=6.7, leading=8.2, textColor=MUTED))
+    styles.add(ParagraphStyle(name='BriefCell', parent=styles['BriefBody'], fontSize=6.6, leading=8.1, spaceAfter=0))
+    styles.add(ParagraphStyle(name='BriefHead', parent=styles['BriefCell'], fontName='Report-Bold', textColor=BLUE))
+
+    flow = []
+    def p(value, style='BriefBody'):
+        return Paragraph(safe(value, ''), styles[style])
+    def add(value, style='BriefBody'):
+        flow.append(p(value, style))
+    def table(headers, rows, widths):
+        values = [[p(item, 'BriefHead') for item in headers]]
+        values += [[p(item, 'BriefCell') for item in row] for row in rows]
+        item = Table(values, colWidths=[WIDTH * size for size in widths], repeatRows=1, hAlign='LEFT')
+        item.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), PALE), ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 5), ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+            ('TOPPADDING', (0, 0), (-1, -1), 4), ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('LINEBELOW', (0, 0), (-1, -1), 0.35, LINE),
+        ]))
+        flow.append(item)
+        flow.append(Spacer(1, 5))
+    def section(title, note=''):
+        add(title, 'BriefSection')
+        if note:
+            add(note, 'BriefSmall')
+
+    def short(value, limit=180):
+        value = text(value, '')
+        return value if len(value) <= limit else value[:limit - 3] + '...'
+
+    add('INSIGHTPILOT / DECISION BRIEF', 'BriefSmall')
+    add(project.get('name'), 'BriefTitle')
+    add(' | '.join(text(project.get(key)) for key in ['derivative', 'market', 'horizon']), 'BriefSub')
+    add('Generated ' + stamp(data.get('generatedAt')) + '. This brief covers only the selected project and non-synthetic saved evidence.', 'BriefSmall')
+    section('1. Executive summary', 'Use this page to understand what is available before acting on the recommendations.')
+    table(['Customer evidence', 'Analysis output', 'PM decision state'], [[
+        f"{number(summary.get('feedbackRecords'))} comments\n{number(summary.get('annotationRows'))} annotation rows\n{number(summary.get('topics'))} source topics",
+        f"{number(summary.get('findings'))} findings\n{number(summary.get('requirements'))} requirements\n{number(summary.get('analysisRuns'))} analysis runs",
+        f"{number(summary.get('approvedRequirements'))} approved\n{number(summary.get('unscoredRequirements'))} incomplete scores\n{number(summary.get('openEvidenceRequests'))} open evidence requests",
+    ]], [0.34, 0.33, 0.33])
+    add(f"Priority mix: {number(summary.get('priorities', {}).get('P1', 0))} P1, {number(summary.get('priorities', {}).get('P2', 0))} P2, {number(summary.get('priorities', {}).get('P3', 0))} P3, {number(summary.get('priorities', {}).get('Unscored', 0))} unscored. Analyzed coverage: {number(summary.get('analyzedSourceRecords'))} distinct records; {number(summary.get('linkedSourceRecords'))} records linked to active findings.")
+    section('Sources used', 'Reference records provide context; only Customer verbatims drive findings and requirements.')
+    datasets = data.get('datasets', [])[:8]
+    table(['Dataset', 'Role / status', 'Records'], [[short(item.get('name'), 85), f"{text(item.get('type'))} / {text(item.get('status'))}", number(item.get('records'))] for item in datasets], [0.52, 0.32, 0.16]) if datasets else add('No internal datasets are saved for this project.')
+    topics = data.get('sourceTopics', [])[:8]
+    if topics:
+        section('Most observed topics', 'Counts are distinct comments and are not market prevalence estimates.')
+        table(['Topic', 'Comments', 'Issues / requests / likes'], [[short(item.get('name'), 100), number(item.get('comments')), f"{number(item.get('negative'))} / {number(item.get('requests'))} / {number(item.get('positive'))}"] for item in topics], [0.55, 0.16, 0.29])
+
+    flow.append(PageBreak())
+    section('2. Requirements to decide', 'Requirements are ordered by calculated priority, then score. Missing ratings use the neutral 3/5 default until changed by the PM.')
+    requirements = data.get('requirements', [])[:10]
+    if requirements:
+        table(['ID / priority', 'Requirement', 'Score', 'Evidence', 'Status'], [[
+            f"{text(item.get('id'))}\n{text(item.get('priority'))}", short(item.get('statement'), 210),
+            f"{item.get('score'):g}/100" if isinstance(item.get('score'), (int, float)) else 'Not scored',
+            text(item.get('evidence')), text(item.get('status')),
+        ] for item in requirements], [0.18, 0.44, 0.12, 0.12, 0.14])
+    else:
+        add('No requirements have been generated. Run feedback analysis from Data Sources first.')
+    scoring = data.get('scoring', {})
+    weights = scoring.get('weights', {})
+    thresholds = scoring.get('thresholds', {})
+    section('Scoring rule', 'This is the configured project model, not an official BMW standard.')
+    add('Weighted score = sum(weight x rating / 5). ' + ' | '.join(f'{name}: {text(weights.get(key))}%' for key, name in DIMENSIONS) + f". P1 >= {text(thresholds.get('p1'))}; P2 >= {text(thresholds.get('p2'))}; otherwise P3.")
+    decisions = data.get('decisions', [])[:6]
+    section('Recent PM decisions')
+    if decisions:
+        table(['Date', 'Action / item', 'Rationale'], [[stamp(item.get('at')), f"{text(item.get('action'))}\n{text(item.get('entityId'))}", short(item.get('rationale'), 240)] for item in decisions], [0.18, 0.30, 0.52])
+    else:
+        add('No PM decisions have been recorded yet.')
+
+    flow.append(PageBreak())
+    section('3. Evidence behind the recommendations', 'Findings are AI-organized signals linked to source records. Inspect the original records before making a product decision.')
+    findings = data.get('findings', [])[:8]
+    if findings:
+        table(['ID / category', 'Finding and customer need', 'Sources', 'Strength'], [[
+            f"{text(item.get('id'))}\n{short(item.get('category'), 55)}", short(item.get('summary'), 180) + '\nNeed: ' + short(item.get('need'), 140),
+            number(item.get('sourceCount')), text(item.get('strength')),
+        ] for item in findings], [0.18, 0.56, 0.12, 0.14])
+    else:
+        add('No findings have been saved for this project.')
+    requests = data.get('evidenceRequests', [])[:6]
+    section('Open evidence requests')
+    if requests:
+        table(['Requirement', 'Follow-up needed'], [[text(item.get('requirementId')), short(item.get('text'), 330)] for item in requests], [0.22, 0.78])
+    else:
+        add('No open evidence requests.')
+    section('Interpretation notes')
+    add('Customer comments, issue labels, requests, likes, and topic counts come from the supplied source records. Findings and requirements are AI-assisted proposals and remain subject to PM review. Reference records inform context but are not counted as customer complaints or automatically converted into priorities.')
+    add('Traceability: each requirement links to findings, each finding links to source record IDs, and the workspace audit trail records PM changes, approvals, rejections, and evidence requests.', 'BriefSmall')
+
+    def footer(canvas, document):
+        canvas.saveState()
+        canvas.setStrokeColor(LINE)
+        canvas.line(MARGIN, 35, PAGE_WIDTH - MARGIN, 35)
+        canvas.setFont('Report', 6.7)
+        canvas.setFillColor(MUTED)
+        canvas.drawString(MARGIN, 23, 'InsightPilot | ' + short(project.get('derivative'), 60))
+        canvas.drawRightString(PAGE_WIDTH - MARGIN, 23, f'Page {document.page} of 3')
+        canvas.restoreState()
+
+    output = io.BytesIO()
+    document = SimpleDocTemplate(output, pagesize=A4, rightMargin=MARGIN, leftMargin=MARGIN, topMargin=32, bottomMargin=48,
+                                 title=f"InsightPilot decision brief - {text(project.get('derivative'))} - {text(project.get('market'))}", author='InsightPilot')
+    document.build(flow, onFirstPage=footer, onLaterPages=footer)
+    slug = re.sub(r'[^A-Za-z0-9._-]+', '-', f"{text(project.get('derivative'))}-{text(project.get('market'))}").strip('-')[:100] or 'project'
+    return output.getvalue(), f'insightpilot-{slug}.pdf'
 
 
 def text(value, fallback='Not recorded'):
@@ -60,6 +183,7 @@ def stamp(value):
 
 
 def build_pdf(data: dict) -> tuple[bytes, str]:
+    return build_compact_pdf(data)
     if data.get('schemaVersion') != 1 or not isinstance(data.get('project'), dict) or not isinstance(data.get('summary'), dict):
         raise ValueError('A current project report snapshot is required.')
     for key, limit in [('datasets', 40), ('findings', 20), ('requirements', 20), ('runs', 10), ('decisions', 15), ('evidenceRequests', 15), ('sourceTopics', 20)]:
