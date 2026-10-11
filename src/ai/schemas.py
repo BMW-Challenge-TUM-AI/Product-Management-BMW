@@ -50,6 +50,14 @@ class ExtractionBatch(StrictModel):
     findings: list[FindingExtraction]
 
 
+class RecordExtraction(ExtractionBatch):
+    source_id: str
+
+
+class MultiRecordExtraction(StrictModel):
+    records: list[RecordExtraction]
+
+
 class SemanticCluster(StrictModel):
     title: str
     summary: str
@@ -63,6 +71,14 @@ class ClusteringBatch(StrictModel):
     clusters: list[SemanticCluster]
 
 
+class ScopedClustering(ClusteringBatch):
+    scope_id: str
+
+
+class MultiScopeClustering(StrictModel):
+    groups: list[ScopedClustering]
+
+
 class RequirementDraft(StrictModel):
     description: str
     category: Category
@@ -70,3 +86,11 @@ class RequirementDraft(StrictModel):
     confidence: Literal["low", "medium", "high"]
     assumptions: list[str]
     uncertainties: list[str]
+
+
+class ClusterRequirementDraft(RequirementDraft):
+    cluster_id: str
+
+
+class RequirementDraftBatch(StrictModel):
+    drafts: list[ClusterRequirementDraft]

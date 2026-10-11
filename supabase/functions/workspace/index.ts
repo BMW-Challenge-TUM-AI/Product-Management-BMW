@@ -1,6 +1,6 @@
 import {z} from 'npm:zod@4';
 import {applyCommand} from '../_shared/workspace.ts';
-import {createSeed} from '../_shared/seed.ts';
+import {createEmptyWorkspace} from '../_shared/empty-workspace.ts';
 import {categories} from '../_shared/types.ts';
 import {authenticate,commit,cors,json} from '../_shared/server.ts';
 const text=z.string().min(1).max(20000),id=z.string().min(1).max(250),reason=text.trim().min(1);
@@ -14,14 +14,13 @@ const commandSchema=z.discriminatedUnion('type',[
  z.object({type:z.literal('finding'),id,status:z.enum(['New','Validated','Challenged','Excluded']),reason}).strict(),
  z.object({type:z.literal('score'),id,scores,priorityOverride:z.enum(['P1','P2','P3']).optional(),reason}).strict(),
  z.object({type:z.literal('model'),model,reason}).strict(),z.object({type:z.literal('import'),dataset}).strict(),
- z.object({type:z.literal('analysis'),projectId:id,datasetIds:z.array(id).min(1).max(50)}).strict(),
  z.object({type:z.literal('project'),project:z.object({id,name:text,derivative:text,market:text,horizon:text}).strict()}).strict(),
  z.object({type:z.literal('resolve'),id,reason}).strict(),z.object({type:z.literal('merge'),id,targetId:id,reason}).strict()
 ]);
 Deno.serve(async req=>{if(req.method==='OPTIONS')return new Response('ok',{headers:cors});try{
  const ctx=await authenticate(req);const body=await req.json();
  if(body.operation==='capabilities')return json({ai:!!Deno.env.get('OPENAI_API_KEY')&&!!Deno.env.get('OPENAI_MODEL'),research:false});
- if(body.operation==='load'){if(!ctx.workspace){if(ctx.member.role!=='pm')throw new Error('A PM must initialize this workspace.');const seed=createSeed();seed.revision=ctx.revision+1;await commit(ctx,seed,ctx.revision);return json({workspace:seed});}return json({workspace:ctx.workspace});}
+ if(body.operation==='load'){if(!ctx.workspace){if(ctx.member.role!=='pm')throw new Error('A PM must initialize this workspace.');const workspace=createEmptyWorkspace();workspace.revision=ctx.revision+1;await commit(ctx,workspace,ctx.revision);return json({workspace});}return json({workspace:ctx.workspace});}
  if(body.operation!=='command'||ctx.member.role!=='pm')return json({error:'PM permission required.'},403);
  if(!ctx.workspace||body.revision!==ctx.revision)return json({error:'The workspace changed. Reload before saving.'},409);
  const command=commandSchema.parse(body.command);

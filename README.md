@@ -1,100 +1,82 @@
 # BMW InsightPilot
 
-BMW InsightPilot turns vehicle feedback into traceable product proposals. A product manager can inspect the original records, change a proposed requirement, challenge a finding, set priority ratings, and approve or reject with a reason. The React app is the main product.
+BMW InsightPilot loads supplied vehicle and market records into a traceable product workspace. It preserves links to source files, workbook sheets, rows, and PDF pages. Customer feedback analysis accepts source-backed customer verbatims only; the app does not insert generated example feedback.
 
-## Start in one command
-
-On this Mac, open Terminal and paste:
+## Start the app
 
 ```sh
-cd /Users/saif/Documents/ChatGPT/Hackathon/TUM-TUM-AI
 ./start-local.sh
 ```
 
-The first start may install Node and Python packages. Open **http://127.0.0.1:5173/**. Keep Terminal open while using the app. Press **Control+C** in Terminal to stop it. Use this address, not the old `file:///.../index.html` page. On another computer, install Node.js 20+ and Python 3.10+ first, then run `./start-local.sh` from the cloned repository.
+Open <http://127.0.0.1:5173/> and keep the terminal open while using the app. Local workspaces are stored in this browser. The local backend reads files from the project’s `data/raw/` folder.
 
-No credentials are needed for the offline demonstration. It starts with a clearly labeled synthetic BMW 5 Series G60/United States project. Local changes are saved in this browser's IndexedDB, with a small-demo local-storage copy for older browsers. They are not shared with teammates or secured by login.
+A fresh clone contains the application and its history. Put the supplied source XLSX/PDF files in `data/raw/` and configure your own `.env` before using live analysis. Source files, credentials, generated analysis jobs, and browser workspace state are local data and are excluded from Git.
 
-**Submission data source:** the working evidence database is internal: the supplied BMW files and any internal CSV/XLSX files you import. The app keeps the working copy locally in this browser. Feedback analysis uses only internal customer verbatims; studies, sales, and equipment remain labeled internal reference context. The assistant uses only these internal records. Public research collected in older workspaces is retained for export but excluded from the active workflow.
+## Project source files
 
-For the supplied BMW sources, place these files in the ignored `data/raw/` folder on your own computer: `F70_feedback_hackathon.xlsx`, `F70_G60_G68_G70_customer_studies.xlsx`, `sales_volumes.xlsx`, `F70_OptionList.PDF`, and `f70_equipment_curated.csv`. The library shows which are available and reads them without writing a processed data file. A teammate without these private files can still use the synthetic demo. Do not add the private files or an exported workspace to Git.
+The supplied XLSX and PDF files belong in `data/raw/`, which is inside the project and ignored by Git. The supplied archive’s source files have been extracted there. Do not commit the private workbooks, PDFs, or exported workspaces.
 
-## Follow the workflow
+`src/backend/services/source_files.py` provides the reusable `read_source_file(path)` function. It reads any XLSX workbook by sheet and source row, and any PDF by page. The same function is used by the BMW-specific adapters and is exposed in the app’s **Project XLSX and PDF files** viewer. New files placed in `data/raw/` are discovered without hard-coded filenames. Text-based PDF extraction is supported; scanned pages are reported for a separate OCR step.
 
-1. Open **Data Sources → Internal data**. In **BMW data library**, choose **1 Series**, **5 Series**, or **7 Series** and a market: **Europe**, **United States**, or **China**. Then click **Load this series + market**. The app selects the matching source code: F70 for 1 Series, G60 for 5 Series in Europe/United States, G68 for 5 Series in China, and G70 for 7 Series. F70/Europe has country-level customer feedback plus regional studies; G68/China has study and shared-series sales context but no supplied customer verbatims. The selector at the top changes which datasets, findings, requirements, history, and assistant context you see.
-2. Inspect the imported source cards. Repeated F70 annotation rows become one comment with every original annotation retained. European country records keep their source country, while EU measures retain regional granularity. Study means, US study response fractions, 2024/2025 sales, future-looking 2030 sales, and catalog pages have their original measure and source location. G60/G68 sales remain explicitly combined; the German F70 equipment catalog is marked Germany-specific. You can also upload your own CSV or XLSX, map columns, validate, and import it.
-3. Select the validated **Customer verbatims** dataset. **Run demo analysis** scans all selected comments with fast, transparent keyword rules and produces tentative proposals. With a configured key, **Run live AI analysis** extracts exact quotes, groups related signals within the same vehicle and market, and drafts customer-facing requirements. Local live AI uses explicit batches of up to 50 records and logs each batch's coverage; you can run further batches separately. Reference sources remain available to the PM and assistant, and never masquerade as customer complaints.
-4. Open **Evidence Explorer** and a finding. Click its source IDs to see the original text and any contradiction or uncertainty. Findings can be challenged by a person.
-5. In **Settings**, enter your name as the responsible PM before making a decision on supplied data. Open **Requirements** or **Review Queue**. Inspect evidence and the separate product/market context, edit the wording, set or leave priority dimensions unknown, and approve, reject, or request evidence with a written reason. AI cannot make a PM decision.
-6. Open **Prioritization** for the score breakdown. The number of selected records is a sample count, not a population frequency. Unknown impact, strategy, and feasibility stay unknown until assessed.
-7. Open **Audit Trail** and **Data Sources → Analysis history** to see decisions, previous versions, linked records, run time, model calls, and token usage. Click **Ask InsightPilot** for source-linked answers about the selected project.
+The reader is ready for XLSX/PDF files saved by a future web collector in the project folder. Fetching files from the web is not part of the current backend workflow.
 
-The browser demo can be reset in **Settings**. Export data before resetting if you need to keep it.
+The supplied feedback workbook totals were independently checked:
 
-## Turn on live AI
+| Source workbook | Distinct feedback IDs | Annotation rows |
+| --- | ---: | ---: |
+| F70 | 2,128 | 4,076 |
+| G60 | 4,000 | 5,005 |
+| G70 | 4,000 | 4,690 |
+| **Total** | **10,128** | **13,771** |
+
+Repeated annotation rows remain attached to one feedback record and are counted separately. The library scopes each record by its source vehicle and market. Regional studies, sales, and catalog records remain reference data, not customer complaints.
+
+## Review and analysis
+
+1. Open **Data Sources** and select a vehicle series and market in the BMW data library.
+2. Inspect imported records and open any listed XLSX/PDF file in the project-file viewer.
+3. **Overview** shows distinct comments, annotation rows, and workbook topic counts immediately. **Evidence Explorer** searches the original comments and opens their exact file, sheet, and row references. **Requirements** shows source topics awaiting drafting, and **Prioritization** ranks topics by distinct-comment frequency.
+4. If a server-side model key is configured, choose a 50-comment batch in **Data Sources → Source feedback analysis** and run analysis. The backend validates source type and blocks synthetic records. Model requests process several records or groups together to reduce request overhead.
+5. The progress banner stays visible across pages. Local analysis runs in the backend and resumes polling after a browser refresh; refreshing does not send the same feedback again. Keep the local server running. Job progress and completed results are retained in the ignored `data/analysis-jobs/` folder so the browser can recover and save them to its workspace.
+6. Review **AI findings** in Evidence Explorer and the generated **Requirements**. Check each linked source, then use **Prioritization → Requirement priorities** to supply documented PM impact, strategy, and feasibility judgments. These scores start unset. The **Analysis history** tab records batch coverage, timing, and API usage.
+
+Analysis outputs are proposals for review. Counts describe records in the supplied files, not population prevalence. The app keeps distinct feedback counts separate from raw annotation-row counts.
+
+## Optional live analysis
 
 ```sh
 cp .env.example .env
 ```
 
-Put your own `OPENAI_API_KEY` value in `.env`, then restart `./start-local.sh`. The file is ignored by Git. Never put a key in a `VITE_` variable or browser code. The local Vite server calls Python, and Python calls the OpenAI Responses API with `store=False`. The assistant and analysis check exact quotes and IDs before showing/saving output. The analysis log records elapsed seconds, API calls, and input/output tokens. Actual API cost depends on your account and selected model.
+Set `OPENAI_API_KEY` in `.env` and restart the local app. The key stays server-side. Analysis sends selected source-backed feedback to the configured provider; no example feedback is generated or sent.
 
-Only start a live analysis when the supplied feedback is permitted to be sent to your configured model provider. The offline demo works without a key. If the live button is missing, check `.env`, restart, and make sure you selected a validated **Customer verbatims** dataset.
+## PDF reports
 
-## What is real, and what is a demo?
+Use **Overview → Export PDF** to download a report generated by the local backend. It includes source statistics, analysis coverage, requirements, linked quotations, counterevidence, scoring gaps, and recent PM decisions. Full project totals accompany a bounded detail selection; the report states the limits and any omissions. PDF generation uses ReportLab and does not call the model service.
 
-| Capability | Current behavior |
-| --- | --- |
-| React workspace, file import, project selector, source links, review/edit/challenge/approval, scoring, local audit/export | Working locally; browser IndexedDB stores larger workspaces. |
-| Supplied BMW data library | Reads all available supplied source roles in their actual vehicle/market scopes. It keeps original fields and provenance, deduplicates repeated F70 annotations, and clearly labels shared or future-looking measures. Requires the private files on the local computer. |
-| Offline analysis | A transparent keyword demonstration, not an LLM or a verified reading of customer sentiment. |
-| Python live analysis and AI assistant | Implemented server side with evidence checks; needs `OPENAI_API_KEY`. Live chat was verified through the running local app with synthetic records. |
-| Public source collector | Retained as historical code but not part of the active submission workflow. External records already in a workspace remain in exports and do not feed the assistant, analysis, or PM reference views. |
-| Optional Supabase cloud backend | Schema, functions, auth rules, and database checks are in the repository. The submission uses the local browser workspace by default; hosted deployment and multiuser behavior remain unverified. |
-| Supplied BMW files | Read from your computer only; never packaged in the app or included in this branch's new commit. Do not commit raw or processed BMW customer data. |
+## Project assistant
 
-No public page is required to run or explain the submission product. Supplied BMW inputs stay in ignored `data/raw/` and are never committed.
+**Ask InsightPilot** can explain the current project's counts, customer themes, analysis runs, requirements, evidence gaps, scores, and recent decisions. The assistant receives computed totals for the whole project and a bounded selection of relevant records, with explicit coverage limits. Source quotations and links to requirements, findings, runs, and decisions are checked before display.
 
-## How the team branches contributed
+Follow-up questions use recent conversation history. Conversations remain separate for each project and persist in the current browser session. **Stop response** cancels a request; failed requests can be retried. Answers from an older workspace revision are marked as out of date. The assistant cannot change or approve project decisions.
 
-| Branch | Useful behavior carried into this product |
-| --- | --- |
-| `main` | BMW workbook ingestion, vehicle data conventions, scoring concepts, and legacy Streamlit tools. The historical BMW input files are excluded from the new commit. |
-| `feature/ai-engine` | Source-grounded signal extraction, exact quote checks, and a lexical grouping baseline. |
-| `feature/saif-ai` | Scope-aware semantic grouping and customer-facing requirement drafting. |
-| `hakim` | Python backend analysis service, requirement review/audit structure, and SQLite prototype. The primary React workflow uses the integrated state engine. |
-| `feature/insightpilot-modern-ui-20261010` | Responsive React workspaces, CSV/XLSX import, versioned PM decisions, audit trail, and optional Supabase backend. |
-| `codex/merged-ai-pipeline` | Combined Python AI pipeline and Entire configuration, repaired and connected to React here. |
+Live chat sends the question, recent conversation, and selected project context to OpenAI through the local backend. `OPENAI_CHAT_MODEL` optionally selects the chat model; its default is `gpt-5-mini` with low reasoning effort. Without live AI, the app provides a clearly labelled local project guide. Error messages identify configuration, service, timeout, and evidence-validation problems instead of presenting an unverified model answer.
 
-The new branch is `codex/integrated-product`. Existing source branches and `main` were not changed or merged into. This is a functional integration, not a claim that every legacy screen or endpoint is part of the main app. The old Streamlit app and FastAPI/SQLite prototype remain as reference tools; start the React product with `./start-local.sh`.
+## Verification
 
-## Method choice and limits
-
-See [docs/method-comparison.md](docs/method-comparison.md) for the measured synthetic benchmark. The chosen live grouping method isolates vehicle, market, category, and finding type, skips API calls for singletons, then asks the model to merge only related findings within a scope. It validates memberships and derives source links in Python. The fastest zero-API exact grouping cannot join paraphrases. The older lexical baseline missed paraphrases and combined records across markets in the test. A mock model demonstrated the scoped algorithm; actual semantic accuracy and latency still need a live credential-backed evaluation.
-
-## Development and verification
-
-With dependencies installed, run:
+With project dependencies installed:
 
 ```sh
+./.venv/bin/python -m unittest discover -s tests -q
+node scripts/sync-backend.mjs
 npm run build
 npm test
 npm run check:edge
 npm run test:db
-.venv/bin/python -m unittest discover -s tests -q
-.venv/bin/python scripts/benchmark_grouping.py
-# While ./start-local.sh is running, with Chrome installed:
-npm run test:e2e
 ```
 
-The regular browser checks use synthetic data. They cover upload, analysis, record links, requirement review, audit, project isolation, mobile layout, assistant citations, and internal-only source selection. When private files are present locally, `node scripts/bmw-browser-check.mjs` also checks a real F70/Europe import, browser persistence, the full offline analysis, G68/China reference-only scope, and mobile source selection. Screenshots go only to ignored `artifacts/`. Python tests for private workbook outputs skip when processed outputs are absent; this does not mean the private files were committed. Local PostgreSQL checks use PGlite, not a hosted Supabase database.
+The Python source-count test compares backend scope statistics to IDs and annotation rows read directly from the supplied workbooks. The generic reader tests cover arbitrary XLSX/PDF filenames, sheet/page provenance, and unsupported formats.
 
-## Optional shared deployment
+## Data and deployment
 
-The `supabase/` folder contains migrations and Edge Functions from the React branch. For a shared deployment, use a dedicated Supabase project, run `npm run sync:backend`, apply migrations with `supabase db push`, provision PM users, deploy `workspace` and `analyze`, and set `APP_ORIGIN`, `OPENAI_API_KEY`, and `OPENAI_MODEL` as server-side secrets. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `.env.local` only after provisioning. Local browser data is not automatically copied into Supabase. Cloud deployment must be tested separately before presenting it as working.
-
-## Entire and Git
-
-This repository contains `.entire/settings.json` and `.codex/hooks.json`. Entire is installed on this Mac, but Codex hook execution requires approval in the Codex **/hooks** UI. `entire status` and checkpoint history must show a real checkpoint before claiming that the mandatory Entire requirement has been satisfied. A normal Git commit or installed hook file alone is not proof.
-
-The new branch ignores `.env`, `data/`, local databases, virtual environments, build output, and screenshots. Keep supplied BMW files in `data/raw/` or outside the repository. Before any future commit, check `git status` and confirm no private data or credentials are staged.
+The local app stores workspace state in this browser; it does not upload the private files automatically. Supabase migrations and functions are included for a separately provisioned shared deployment. Cloud setup and multiuser behavior must be verified in that environment before use.

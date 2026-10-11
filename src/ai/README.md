@@ -1,57 +1,15 @@
-# Combined AI feedback pipeline
+# Source-backed analysis pipeline
 
-This package combines source-grounded extraction, scope-isolated semantic grouping,
-and customer-facing requirement drafts. `scripts/analyze_bridge.py` connects it to
-the React app through the local Vite server. `src/backend/services/analysis_service.py`
-validates the input and records API usage.
+This package extracts feedback signals, groups them within vehicle and market scope, and drafts requirements for product-manager review. The local app accepts only selected source-backed customer feedback. API and cloud endpoints reject synthetic records.
 
-## Run it
+The React app reads the workbook and PDF inputs through `src/backend/services/source_files.py`, then passes validated source records to the analysis service. Analysis preserves source IDs, exact-quote checks, file and row locations, uncertainty, and pending decision status. Reference material is kept separate from customer complaints.
 
-Install the Python dependencies in your project environment:
+Live analysis requires `OPENAI_API_KEY` on the server and the user's explicit action to run it on selected records. The Responses API calls use `store=False`. This setting does not replace project data-use approval.
 
-```bash
-python -m pip install openai pydantic
-```
+## Limits
 
-From the repository root, configure `OPENAI_API_KEY` in your shell or runtime,
-then call:
-
-```python
-from src.ai import run_ai_pipeline
-
-records = [{
-    "source_id": "sample-001",
-    "vehicle": "Fictional demo vehicle",
-    "market": "Germany",
-    "text": "The seat is uncomfortable on long journeys.",
-    "source_type": "synthetic example",
-}]
-
-result = run_ai_pipeline(records)
-```
-
-Each source record is extracted separately. AI clustering is meaning-based but
-kept within the same vehicle, market, category, and finding type. The pipeline
-checks that evidence quotes occur verbatim in their source text, checks that
-cluster IDs are neither missing nor invented, and derives source IDs in Python.
-If semantic clustering fails, it preserves findings and falls back to separate
-single-finding clusters, with a validation warning.
-
-Requirement drafts carry their source and finding IDs, rationale, confidence,
-assumptions, and uncertainties. They always have `decision_status: "pending"`;
-the AI cannot approve them. Reference errors remain visible and require human
-review.
-
-## Limitations and data handling
-
-- Example inputs must be synthetic unless the team has authorization to use the
-  challenge data with the configured API.
-- The API receives supplied feedback text. `store=False` is set on Responses API
-  calls; this is not a substitute for confirming data-use requirements.
-- The module itself does not read spreadsheets or save browser state. The React
-  import and integration layers handle those tasks and leave unknown PM score
-  dimensions unset.
-- Semantic grouping and requirement wording are model suggestions, not verified
-  facts. Quotes are checked exactly; their interpretation still needs a person.
-- Do not put API keys or raw customer data in Git. Keep credentials in the
-  runtime environment and input files outside the repository.
+- The source workbooks define the records eligible for analysis; the model does not create feedback rows.
+- Quotes are checked against source text. Their interpretation and the proposed requirements still need human review.
+- Counts are file counts, not population prevalence.
+- The analysis package does not fetch web pages or download files. A future collector can save an XLSX/PDF in the project source folder and use the same generic reader before source classification.
+- Do not put API keys or raw customer data in Git.

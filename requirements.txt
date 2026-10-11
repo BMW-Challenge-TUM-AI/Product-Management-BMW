@@ -5,6 +5,7 @@ openpyxl>=3.1,<4
 
 # PDF extraction
 pymupdf>=1.24,<2
+reportlab>=4.4,<5
 
 # OpenAI AI pipeline
 openai>=1.80,<3

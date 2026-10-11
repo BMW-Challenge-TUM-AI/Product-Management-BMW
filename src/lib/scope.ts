@@ -6,11 +6,12 @@ const marketAliases:Record<string,string>={
  finland:'FI',fi:'FI','south korea':'KR',korea:'KR',kr:'KR',
  'south africa':'ZA',za:'ZA',germany:'DE',de:'DE',europe:'EU',eu:'EU',
  china:'CN',cn:'CN','united states':'US',usa:'US',us:'US',
+ canada:'CA',ca:'CA',norway:'NO',no:'NO',spain:'ES',es:'ES',latvia:'LV',lv:'LV',
  'rest of world':'ROW',row:'ROW',
 };
 const vehicleCode=(value:unknown)=>String(value??'').toUpperCase().match(/\b(F70|G60|G68|G70)\b/)?.[1]??'';
 const marketCode=(value:unknown)=>marketAliases[String(value??'').trim().toLowerCase()]??'';
-const europeSourceCodes=new Set(['EU','GB','SE','FR','DK','FI','DE']);
+const europeSourceCodes=new Set(['EU','GB','SE','FR','DK','FI','DE','NO','ES','LV']);
 
 /** Reject known mismatches; generic records without source scope remain a PM responsibility. */
 export function assertFeedbackScope(datasets:Dataset[],project:Project):void {

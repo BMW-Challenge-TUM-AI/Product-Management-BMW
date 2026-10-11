@@ -1,5 +1,5 @@
 #!/bin/sh
-# Start the private local demo. The OpenAI key, when present, stays in this process.
+# Start the local source workspace. The OpenAI key stays in this process.
 set -eu
 cd "$(dirname "$0")"
 
@@ -31,7 +31,7 @@ fi
 if [ ! -x .venv/bin/python ]; then
   python3 -m venv .venv
 fi
-if ! .venv/bin/python -c 'import openai, pydantic, requests, bs4' >/dev/null 2>&1; then
+if ! .venv/bin/python -c 'import openai, pydantic, requests, bs4, reportlab, openpyxl, pandas, fitz' >/dev/null 2>&1; then
   .venv/bin/python -m pip install -r requirements.txt
 fi
 export PYTHON_BIN="$PWD/.venv/bin/python"

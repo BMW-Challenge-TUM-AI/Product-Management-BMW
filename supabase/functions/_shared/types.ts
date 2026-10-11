@@ -15,6 +15,6 @@ export interface Requirement { id:string; projectId:string; title:string; statem
 export interface AuditEvent { id:string; projectId:string; at:string; actor:'PM'|'AI'|'System'; actorId:string; action:string; entityType:string; entityId:string; before:unknown; after:unknown; rationale:string; relatedIds:string[]; version?:number; runId?:string }
 export interface ScoringModel { version:number; weights:Record<Dimension,number>; thresholds:{p1:number;p2:number}; updatedAt:string }
 export interface EvidenceRequest { id:string; projectId:string; requirementId:string; text:string; status:'Open'|'Resolved'; createdAt:string }
-export interface AnalysisRun { id:string; projectId:string; datasets:string[]; at:string; mode:'Demo'|'AI'; findingIds:string[]; requirementIds:string[] }
+export interface AnalysisRun { id:string; projectId:string; datasets:string[]; contextDatasets?:string[]; at:string; mode:'Demo'|'AI'; findingIds:string[]; requirementIds:string[]; coverage?:{first:number;last:number;total:number;batch:number;batches:number}; metrics?:{seconds:number;api_calls:number;input_tokens:number;output_tokens:number;reasoning_tokens:number;model:string} }
 export interface Workspace { schemaVersion:1; projects:Project[]; datasets:Dataset[]; findings:Finding[]; requirements:Requirement[]; audit:AuditEvent[]; model:ScoringModel; requests:EvidenceRequest[]; runs:AnalysisRun[]; revision:number }
 export type Page = 'Overview'|'Evidence Explorer'|'Requirements'|'Prioritization'|'Review Queue'|'Audit Trail'|'Data Sources'|'Settings';

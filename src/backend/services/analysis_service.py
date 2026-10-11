@@ -10,10 +10,12 @@ from src.backend.schemas import Requirement
 from src.backend.services.requirement_service import add_ai_proposal
 
 
-def analyze_records(records, *, client=None):
+def analyze_records(records, *, client=None, on_progress=None):
     if not isinstance(records, list) or not 1 <= len(records) <= 50:
         raise ValueError('Select between 1 and 50 feedback records per live run.')
     valid = [FeedbackRecord.model_validate(r) for r in records]
+    if any(r.source_type != 'customer_feedback' or (r.metadata or {}).get('synthetic') is True for r in valid):
+        raise ValueError('AI analysis accepts source-backed customer feedback only.')
     if len({r.source_id for r in valid}) != len(valid):
         raise ValueError('Duplicate source IDs are not allowed.')
     if len({(r.vehicle, r.market) for r in valid}) != 1:
@@ -34,12 +36,22 @@ def analyze_records(records, *, client=None):
         workers = min(4, max(1, int(os.getenv('AI_EXTRACT_WORKERS', '3')))) if live else 1
     except ValueError as exc:
         raise ValueError('AI_EXTRACT_WORKERS must be an integer from 1 to 4.') from exc
-    result = run_ai_pipeline(records, client=tracked, workers=workers)
+    result = run_ai_pipeline(records, client=tracked, workers=workers, on_progress=on_progress,
+                             extraction_batch_size=10, clustering_batch_size=8,
+                             requirement_batch_size=8)
+    if on_progress:
+        on_progress({'stage': 'committing', 'progress': 93,
+                     'message': 'Validating exact source quotes and requirement references…'})
     # Never publish a partial, failed run as successful analysis.
     fatal = [e for e in result['validation_errors'] if e['code'] not in {
         'no_findings', 'semantic_clustering_failed_fallback_used'}]
     if fatal:
-        raise ValueError('AI analysis could not validate the result: ' + ', '.join(sorted({e['code'] for e in fatal})))
+        reasons = list(dict.fromkeys(e['reason'] for e in fatal if e.get('reason')))
+        if any(e['code'] == 'invalid_evidence_quote' for e in fatal):
+            reasons.append('A model quote did not exactly match the source feedback; retry this batch.')
+        detail = ' '.join(reasons) if reasons else 'Evidence references failed validation: ' + ', '.join(sorted({e['code'] for e in fatal}))
+        stages = ', '.join(sorted({e['code'] for e in fatal}))
+        raise ValueError('AI analysis failed (' + stages + '). ' + detail + ' No results were saved.')
     result['metrics'] = {
         'seconds': round(time.perf_counter() - started, 3),
         'api_calls': tracked.calls,
@@ -48,6 +60,9 @@ def analyze_records(records, *, client=None):
         'reasoning_tokens': tracked.reasoning_tokens,
         'model': os.getenv('OPENAI_MODEL', 'gpt-5-mini'),
         'extraction_workers': workers,
+        'extraction_batch_size': 10,
+        'clustering_batch_size': 8,
+        'requirement_batch_size': 8,
     }
     return result
 
