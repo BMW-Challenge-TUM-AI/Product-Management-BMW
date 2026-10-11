@@ -172,6 +172,8 @@ def _validate_payload(payload: dict) -> tuple[dict, list[dict], dict, dict]:
 
 def _provider_error(error: Exception) -> AssistantError:
     """Classify failures without exposing provider bodies, request details or keys."""
+    if type(error).__name__ == 'RuntimeError' and 'Agent Framework is missing' in str(error):
+        return AssistantError('Install the Python dependencies from requirements.txt, then restart the app.', 'missing_dependency')
     name = type(error).__name__
     status = getattr(error, 'status_code', None)
     code = getattr(error, 'code', None)
@@ -253,9 +255,8 @@ def answer_question(payload: dict, *, client=None) -> dict:
     if not os.getenv('OPENAI_API_KEY', '').strip() and client is None:
         raise AssistantError('Set OPENAI_API_KEY in .env and restart the app, or use the local project summary.', 'missing_configuration')
     if client is None:
-        from openai import OpenAI
-        # One bounded attempt fits inside the local route's 60-second deadline.
-        client = OpenAI(timeout=40, max_retries=0)
+        from .agent_runtime import MicrosoftAgentClient
+        client = MicrosoftAgentClient()
     try:
         response = client.responses.parse(
             model=model,

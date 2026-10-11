@@ -80,7 +80,7 @@ export function buildReportPayload(state:Workspace, projectId:string) {
     project:{id:bounded(project.id,160),name:bounded(project.name,180),derivative:bounded(project.derivative,120),market:bounded(project.market,120),horizon:bounded(project.horizon,120)},
     summary:{datasets:datasets.length,readyDatasets:datasets.filter(item=>item.status==='Ready').length,
       sourceRecords:sourceInsights.feedbackCount+referenceRecords,feedbackRecords:sourceInsights.feedbackCount,annotationRows:sourceInsights.annotationCount,
-      topics:sourceInsights.topics.length,negativeFeedback:sourceInsights.negativeCount,positiveFeedback:sourceInsights.positiveCount,requestedFeedback:sourceInsights.requestCount,unknownFeedback:sourceInsights.unknownCount,
+      topics:sourceInsights.topics.length,inferredTopicComments:sourceInsights.inferredCommentCount,generalFeedbackComments:sourceInsights.generalFeedbackCount,negativeFeedback:sourceInsights.negativeCount,positiveFeedback:sourceInsights.positiveCount,requestedFeedback:sourceInsights.requestCount,unknownFeedback:sourceInsights.unknownCount,
       referenceRecords,
       findings:findings.length,activeFindings:findings.filter(item=>item.status!=='Excluded').length,
       requirements:requirements.length,approvedRequirements:requirements.filter(item=>item.status==='Approved').length,
@@ -89,7 +89,7 @@ export function buildReportPayload(state:Workspace, projectId:string) {
       analysisRuns:runs.length,openEvidenceRequests:requests.length,
       statuses:Object.fromEntries([...new Set(requirements.map(item=>item.status))].map(status=>[status,requirements.filter(item=>item.status===status).length])),
       priorities:Object.fromEntries(['P1','P2','P3','Unscored'].map(priority=>[priority,preparedRequirements.filter(item=>item.priority===priority).length]))},
-    sourceTopics:sourceInsights.topics.slice(0,limits.topics).map(item=>({name:bounded(item.name,160),comments:item.feedbackCount,annotations:item.annotationCount,negative:item.negativeCount,positive:item.positiveCount,requests:item.requestCount,unknown:item.unknownCount})),
+    sourceTopics:sourceInsights.topics.slice(0,limits.topics).map(item=>({name:bounded(item.name,160),comments:item.feedbackCount,annotations:item.annotationCount,sourceComments:item.sourceCount,inferredComments:item.inferredCount,generalComments:item.generalCount,negative:item.negativeCount,positive:item.positiveCount,requests:item.requestCount,unknown:item.unknownCount})),
     excludedSynthetic:{datasets:projectDatasets.filter(item=>item.synthetic).length,records:projectDatasets.filter(item=>item.synthetic).reduce((total,item)=>total+item.records.length,0),findings:projectFindings.filter(item=>item.synthetic).length,requirements:projectRequirements.filter(item=>item.synthetic).length,
       demoRuns:state.runs.filter(item=>item.projectId===projectId&&item.mode==='Demo').length},
     datasets:datasets.slice(0,limits.datasets).map(item=>{

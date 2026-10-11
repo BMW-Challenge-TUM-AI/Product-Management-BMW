@@ -1,4 +1,7 @@
 import type {SourceRecord, Workspace} from '../types';
+import {createSourceCategoryClassifier} from './source-classification';
+
+export type SourceCategoryOrigin='source'|'inferred'|'general';
 
 export interface SourceLocation {
  recordId:string;
@@ -7,6 +10,8 @@ export interface SourceLocation {
  row:number;
  quote:string;
  feedbackType:string|null;
+ categoryOrigin?:SourceCategoryOrigin;
+ similarity?:number;
 }
 
 /** Counts are distinct comments, and can overlap when a comment has multiple source labels. */
@@ -26,6 +31,9 @@ export interface SourceTopic extends SourceLabelCounts {
  recordIds:string[];
  feedbackCount:number;
  annotationCount:number;
+ sourceCount:number;
+ inferredCount:number;
+ generalCount:number;
  locations:SourceLocation[];
 }
 
@@ -33,13 +41,19 @@ export interface SourceInsights extends SourceLabelCounts {
  records:SourceRecord[];
  feedbackCount:number;
  annotationCount:number;
+ inferredCommentCount:number;
+ generalFeedbackCount:number;
  topics:SourceTopic[];
  files:string[];
 }
 
-type Annotation = {row:number; category:string|null; feedbackType:string|null; original:Record<string,unknown>};
+type Annotation = {row:number; category:string|null; feedbackType:string|null; original:Record<string,unknown>; categoryOrigin?:SourceCategoryOrigin; similarity?:number};
 type AccumulatedRecord = {record:SourceRecord; annotations:Map<string,Annotation>; reportedRows:number};
 const asText=(value:unknown):string|null=>typeof value==='string'&&value.trim()?value:null;
+const sourceCategory=(value:unknown):string|null=>{
+ const text=asText(value)?.trim()??null;
+ return text&&!['no_class_found','no class found','unclassified'].includes(text.toLowerCase())?text:null;
+};
 const asRow=(value:unknown,fallback:number):number=>typeof value==='number'&&Number.isInteger(value)&&value>0?value:fallback;
 const labels={negative:new Set(['Defect','Difficult to Use']),positive:new Set(['Likes']),request:new Set(['Wants'])};
 
@@ -59,10 +73,10 @@ function sourceAnnotations(record:SourceRecord):Annotation[] {
  const parsed=annotations.flatMap((value:unknown,index:number)=>{
   if(!value||typeof value!=='object')return [];
   const annotation=value as Record<string,unknown>;
-  return [{row:asRow(annotation.row,record.row+index),category:asText(annotation.category_level_2),feedbackType:asText(annotation.feedback_type),original:annotation}];
+  return [{row:asRow(annotation.row,record.row+index),category:sourceCategory(annotation.category_level_2),feedbackType:asText(annotation.feedback_type),original:annotation}];
  });
  if(parsed.length)return parsed;
- return [{row:sourceLocation(record).row,category:asText(record.category),feedbackType:asText(record.fields['Feedback Type'])??asText(record.fields.feedback_type),original:{}}];
+ return [{row:sourceLocation(record).row,category:sourceCategory(record.category),feedbackType:asText(record.fields['Feedback Type'])??asText(record.fields.feedback_type),original:{}}];
 }
 
 /** Exact labels supplied in the workbook; these are not AI sentiment predictions. */
@@ -94,7 +108,7 @@ function countLabels(groups:Iterable<Annotation[]>):SourceLabelCounts {
  return result;
 }
 
-/** Summarize source annotations only. Never creates findings, requirements, or inferred scores. */
+/** Keep source feedback labels intact while adding conservative local topic inferences. */
 export function getSourceInsights(state:Workspace,projectId:string):SourceInsights {
  const distinct=new Map<string,AccumulatedRecord>();
  for(const dataset of state.datasets){
@@ -113,13 +127,29 @@ export function getSourceInsights(state:Workspace,projectId:string):SourceInsigh
   }
  }
 
+ const training=[...distinct.values()].map(entry=>({
+  text:entry.record.content,
+  categories:[...new Set([...entry.annotations.values()].flatMap(annotation=>annotation.category?[annotation.category]:[]))],
+ }));
+ const classify=createSourceCategoryClassifier(training);
  const topicGroups=new Map<string,Map<string,{record:SourceRecord;annotations:Annotation[]}>>();
  const records:SourceRecord[]=[];
  let annotationCount=0;
+ let inferredCommentCount=0;
+ let generalFeedbackCount=0;
  for(const [key,entry] of distinct){
-  const annotations=[...entry.annotations.values()];
+  const annotations=[...entry.annotations.values()].map(annotation=>{
+   if(annotation.category)return {...annotation,categoryOrigin:'source' as const};
+   const prediction=classify(entry.record.content);
+   return {...annotation,category:prediction.category,categoryOrigin:prediction.origin,similarity:prediction.similarity};
+  });
+  if(annotations.some(annotation=>annotation.categoryOrigin==='inferred'))inferredCommentCount++;
+  if(annotations.some(annotation=>annotation.categoryOrigin==='general'))generalFeedbackCount++;
   // Merge source annotations across duplicate imports without mutating the workspace.
-  const record={...entry.record,fields:{...entry.record.fields,annotations:annotations.map(annotation=>Object.keys(annotation.original).length?annotation.original:{row:annotation.row,category_level_2:annotation.category,feedback_type:annotation.feedbackType})}};
+  const record={...entry.record,fields:{...entry.record.fields,annotations:annotations.map(annotation=>({
+   ...(Object.keys(annotation.original).length?annotation.original:{row:annotation.row,category_level_2:annotation.category,feedback_type:annotation.feedbackType}),
+   ...(annotation.categoryOrigin==='source'?{}:{insight_category:annotation.category??'General feedback',insight_origin:annotation.categoryOrigin,insight_similarity:annotation.similarity??0}),
+  }))}};
   records.push(record);
   annotationCount+=Math.max(new Set(annotations.map(annotation=>annotation.row)).size,entry.reportedRows);
   for(const annotation of annotations){
@@ -136,15 +166,18 @@ export function getSourceInsights(state:Workspace,projectId:string):SourceInsigh
   const category=JSON.parse(categoryKey) as string|null;
   const values=[...members.values()];
   return {
-   id:`source-topic:${categoryKey}`,category,name:category??'No source category',
+   id:`source-topic:${categoryKey}`,category,name:category??'General feedback',
    records:values.map(member=>member.record),recordIds:values.map(member=>member.record.id),feedbackCount:members.size,
    annotationCount:values.reduce((sum,member)=>sum+new Set(member.annotations.map(annotation=>annotation.row)).size,0),
+   sourceCount:values.filter(member=>member.annotations.some(annotation=>annotation.categoryOrigin==='source')).length,
+   inferredCount:values.filter(member=>member.annotations.some(annotation=>annotation.categoryOrigin==='inferred')).length,
+   generalCount:values.filter(member=>member.annotations.some(annotation=>annotation.categoryOrigin==='general')).length,
    ...countLabels(values.map(member=>member.annotations)),
-   locations:values.flatMap(member=>member.annotations.map(annotation=>({...sourceLocation(member.record),row:annotation.row,feedbackType:annotation.feedbackType}))),
+   locations:values.flatMap(member=>member.annotations.map(annotation=>({...sourceLocation(member.record),row:annotation.row,feedbackType:annotation.feedbackType,categoryOrigin:annotation.categoryOrigin,similarity:annotation.similarity}))),
   };
  }).sort((a,b)=>b.feedbackCount-a.feedbackCount||b.negativeCount-a.negativeCount||a.name.localeCompare(b.name));
  return {
-  records,feedbackCount:records.length,annotationCount,topics,
+  records,feedbackCount:records.length,annotationCount,inferredCommentCount,generalFeedbackCount,topics,
   ...countLabels([...distinct.values()].map(entry=>[...entry.annotations.values()])),
   files:[...new Set(records.map(record=>sourceLocation(record).file))].sort(),
  };

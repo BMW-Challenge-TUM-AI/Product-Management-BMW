@@ -4,7 +4,8 @@ import json
 import os
 import time
 from threading import Lock
-from src.ai import run_ai_pipeline
+from src.ai import AnalysisOrchestrator
+from src.ai.agent_runtime import MicrosoftAgentClient
 from src.ai.schemas import FeedbackRecord
 from src.backend.schemas import Requirement
 from src.backend.services.requirement_service import add_ai_proposal
@@ -29,16 +30,17 @@ def analyze_records(records, *, client=None, on_progress=None):
     started = time.perf_counter()
     live = client is None
     if live:
-        from openai import OpenAI
-        client = OpenAI(timeout=60, max_retries=1)
-    tracked = UsageTrackedClient(client)
+        tracked = MicrosoftAgentClient()
+    else:
+        tracked = UsageTrackedClient(client)
     try:
         workers = min(4, max(1, int(os.getenv('AI_EXTRACT_WORKERS', '3')))) if live else 1
     except ValueError as exc:
         raise ValueError('AI_EXTRACT_WORKERS must be an integer from 1 to 4.') from exc
-    result = run_ai_pipeline(records, client=tracked, workers=workers, on_progress=on_progress,
-                             extraction_batch_size=10, clustering_batch_size=8,
-                             requirement_batch_size=8)
+    result = AnalysisOrchestrator(client=tracked).run(
+        records, workers=workers, on_progress=on_progress,
+        extraction_batch_size=10, clustering_batch_size=8,
+        requirement_batch_size=8)
     if on_progress:
         on_progress({'stage': 'committing', 'progress': 93,
                      'message': 'Validating exact source quotes and requirement references…'})

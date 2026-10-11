@@ -61,8 +61,8 @@ def run_ai_pipeline(records, *, client=None, workers=1, on_progress=None,
     def get_client():
         nonlocal client
         if client is None:
-            from openai import OpenAI
-            client = OpenAI(timeout=60, max_retries=1)
+            from .agent_runtime import MicrosoftAgentClient
+            client = MicrosoftAgentClient()
         return client
 
     def extract_one(record):
@@ -153,3 +153,22 @@ def run_ai_pipeline(records, *, client=None, workers=1, on_progress=None,
             add_error(code, requirement_id=requirement["requirement_id"])
         result["proposed_requirements"].append(requirement)
     return result
+
+
+class AnalysisOrchestrator:
+    """Run the guarded extraction, grouping, and drafting stages in order."""
+
+    def __init__(self, client=None):
+        self.client = client
+
+    def run(self, records, *, workers=1, on_progress=None,
+            extraction_batch_size=1, clustering_batch_size=1, requirement_batch_size=1):
+        return run_ai_pipeline(
+            records,
+            client=self.client,
+            workers=workers,
+            on_progress=on_progress,
+            extraction_batch_size=extraction_batch_size,
+            clustering_batch_size=clustering_batch_size,
+            requirement_batch_size=requirement_batch_size,
+        )

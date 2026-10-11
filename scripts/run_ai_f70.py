@@ -51,10 +51,8 @@ def main(argv=None):
     load_dotenv(ROOT / '.env')
     if not os.getenv('OPENAI_API_KEY'):
         parser.error('Missing OPENAI_API_KEY in environment/.env')
-    from openai import OpenAI
-
     print(f'LIVE: processing {len(records)} distinct source comments.')
-    result = run_ai_pipeline(records, client=OpenAI(timeout=60, max_retries=2))
+    result = run_ai_pipeline(records)
     run_id = save_run(records, result, db_path=ROOT / args.db, settings={
         'mode': 'live', 'country_filter': args.country,
         'sample_seed': args.seed, 'model': os.getenv('OPENAI_MODEL', 'gpt-5-mini'),

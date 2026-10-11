@@ -2,6 +2,8 @@
 
 
 def provider_error_message(error):
+    if type(error).__name__ == 'RuntimeError' and 'Agent Framework is missing' in str(error):
+        return 'Microsoft Agent Framework is missing. Run pip install -r requirements.txt and restart the app.'
     messages = {
         'AuthenticationError': 'The model API key was rejected. Check OPENAI_API_KEY and restart the app.',
         'PermissionDeniedError': 'The model API key does not have access to the configured model.',

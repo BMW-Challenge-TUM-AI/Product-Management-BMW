@@ -1,5 +1,5 @@
 import type {Plugin} from 'vite';
-import {spawn} from 'node:child_process';
+import {spawn,spawnSync} from 'node:child_process';
 import {existsSync,mkdirSync,readFileSync,readdirSync,renameSync,writeFileSync} from 'node:fs';
 import type {IncomingMessage, ServerResponse} from 'node:http';
 import {resolve,join} from 'node:path';
@@ -21,9 +21,29 @@ const isFinished=(job:AnalysisJob)=>job.stage==='complete'||job.stage==='failed'
 const processExists=(pid:number|undefined)=>{if(!pid)return false;try{process.kill(pid,0);return true;}catch{return false;}};
 const publicJob=({workerPid:_workerPid,ownerPid:_ownerPid,...job}:AnalysisJob)=>job;
 
+function resolvePython(env:Record<string,string>):string {
+ const candidates=[
+  env.PYTHON_BIN,
+  resolve('.venv','Scripts','python.exe'),
+  resolve('.venv','bin','python'),
+  env.USERPROFILE?join(env.USERPROFILE,'.cache','codex-runtimes','codex-primary-runtime','dependencies','python','python.exe'):'',
+  process.platform==='win32'?'python':'python3',
+  'python3',
+ ].filter(Boolean) as string[];
+ for(const candidate of candidates){
+  if(candidate.includes('/')||candidate.includes('\\')){
+   if(!existsSync(candidate))continue;
+  }
+  const check=spawnSync(candidate,['-c','import sys; print(sys.executable)'],{encoding:'utf8',timeout:3000});
+  if(check.status===0)return candidate;
+ }
+ return process.platform==='win32'?'python':'python3';
+}
+
 /** Local-only Python services. No API key is ever sent to browser JavaScript. */
 export function localAI(env:Record<string,string>):Plugin {
  const jobsDirectory=resolve(env.ANALYSIS_JOB_DIR||'data/analysis-jobs');
+ const python=resolvePython(env);
  const runtime=runtimes.get(jobsDirectory)??{};
  runtimes.set(jobsDirectory,runtime);
  const redact=(text:string)=>env.OPENAI_API_KEY?text.split(env.OPENAI_API_KEY).join('[redacted]'):text;
@@ -118,8 +138,7 @@ export function localAI(env:Record<string,string>):Plugin {
    if(analysis)runtime.active={token,jobId:job?.jobId};
    const streaming=analysis&&req.headers.accept?.includes('application/x-ndjson')===true;
    const workerStreaming=streaming||asynchronous;
-   const python=env.PYTHON_BIN||(existsSync('.venv/bin/python')?'.venv/bin/python':'python3');
-   const child=spawn(python,[route.script,...(workerStreaming?['--stream']:[])],{env:{...process.env,...env},stdio:['pipe','pipe','pipe']});
+   const child=spawn(python,[route.script,...(workerStreaming?['--stream']:[])],{env:{...process.env,...env,PYTHONIOENCODING:'utf-8',PYTHONUTF8:'1'},stdio:['pipe','pipe','pipe']});
    worker=child;
    if(job){job.workerPid=child.pid;saveJob(job);}
    let output='',finished=false,outputSize=0,terminal:StreamEvent|undefined;

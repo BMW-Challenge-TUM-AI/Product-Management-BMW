@@ -145,7 +145,7 @@ def build_pdf(data: dict) -> tuple[bytes, str]:
         f"{number(summary.get('approvedRequirements'))} approved requirements\n{number(summary.get('unscoredRequirements'))} with incomplete scores\n{number(summary.get('openEvidenceRequests'))} open evidence requests",
     ]], [0.34, 0.33, 0.33])
     label('Analysis coverage', f"{number(summary.get('analyzedSourceRecords'))} distinct current source records covered by saved AI run ranges; {number(summary.get('linkedSourceRecords'))} records linked to active findings.")
-    label('Original feedback annotations', f"{number(summary.get('annotationRows'))} original annotation rows across {number(summary.get('topics'))} source topics. Distinct comment counts use the same deduplication as Overview.", 'ReportSmall')
+    label('Original feedback annotations', f"{number(summary.get('annotationRows'))} original annotation rows across {number(summary.get('topics'))} topics; {number(summary.get('inferredTopicComments'))} comments received local text-based topic matches and {number(summary.get('generalFeedbackComments'))} low-confidence comments remain General feedback. Distinct comment counts use the same deduplication as Overview.", 'ReportSmall')
     if summary.get('runsWithoutCoverage'):
         body(f"{number(summary['runsWithoutCoverage'])} AI runs have unavailable or unmatched coverage metadata and are excluded from the distinct analyzed-record count.", 'ReportSmall')
     label('Requirement status', '; '.join(f'{key}: {number(value)}' for key, value in summary.get('statuses', {}).items()) or 'No requirements yet')
@@ -163,11 +163,11 @@ def build_pdf(data: dict) -> tuple[bytes, str]:
         body('No internal source datasets are saved for this project.')
     if data.get('sourceTopics'):
         body('Source topic counts', 'ReportItem')
-        body(f"Showing {len(data['sourceTopics'])} of {number(selection.get('topics'))} source topics, ordered by distinct comment count. Comments can belong to several topics or source labels. Negative, positive and request labels come from the supplied workbook, not inferred sentiment.", 'ReportSmall')
-        table(['Source topic', 'Comments', 'Annotations', 'Source label counts'], [[
+        body(f"Showing {len(data['sourceTopics'])} of {number(selection.get('topics'))} topics, ordered by distinct comment count. Workbook categories and local text-based matches are distinguished; ambiguous comments are grouped under General feedback. Negative, positive and request labels come from the supplied workbook, not inferred sentiment.", 'ReportSmall')
+        table(['Topic', 'Comments', 'Annotations', 'Topic origin / source labels'], [[
             item.get('name'), number(item.get('comments')), number(item.get('annotations')),
-            f"Negative {number(item.get('negative'))}\nPositive {number(item.get('positive'))}\nRequests {number(item.get('requests'))}\nUnknown {number(item.get('unknown'))}",
-        ] for item in data['sourceTopics']], [0.43, 0.14, 0.15, 0.28])
+            f"Workbook {number(item.get('sourceComments'))} · Inferred {number(item.get('inferredComments'))} · General {number(item.get('generalComments'))}\nNegative {number(item.get('negative'))} · Positive {number(item.get('positive'))} · Requests {number(item.get('requests'))} · Unknown {number(item.get('unknown'))}",
+        ] for item in data['sourceTopics']], [0.30, 0.12, 0.13, 0.45])
 
     section('2. Analysis coverage and recorded metrics', f"Showing {len(data.get('runs', []))} of {number(selection.get('runs', len(data.get('runs', []))))} saved runs, newest first. Repeated batches can overlap; their sizes must not be summed as unique coverage.")
     for run in data.get('runs', []):
