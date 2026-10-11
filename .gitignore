@@ -9,11 +9,6 @@ tools/
 
 .env.*
 !.env.example
-/data/
-*.xlsx
-*.xls
-*.pdf
-*.PDF
 *.sqlite3
 *.db
 __pycache__/
