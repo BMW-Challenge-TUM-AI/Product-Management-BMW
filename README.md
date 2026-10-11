@@ -1,82 +1,25 @@
 # BMW InsightPilot
 
-BMW InsightPilot loads supplied vehicle and market records into a traceable product workspace. It preserves links to source files, workbook sheets, rows, and PDF pages. Customer feedback analysis accepts source-backed customer verbatims only; the app does not insert generated example feedback.
+## Project description
 
-## Start the app
+BMW InsightPilot is a product intelligence workspace for turning source-backed vehicle feedback into reviewable product requirements. The platform loads supplied XLSX and PDF material, preserves provenance down to workbook sheets, rows, and PDF pages, and separates customer verbatims from internal studies, equipment data, catalog records, and sales context. Product teams can select a vehicle and market scope, inspect the underlying evidence, run AI-assisted analysis on bounded batches of real customer comments, and convert findings into requirement proposals that remain pending human review. The system is designed for traceability: every generated insight, requirement, priority, and report can be checked against source material. A read-only AI assistant, with text and voice interaction, helps teams ask natural follow-up questions about the current project, evidence gaps, analysis coverage, and recent decisions without giving the assistant authority to approve or change requirements.
 
-```sh
-./start-local.sh
-```
+## Platform workflow
 
-Open <http://127.0.0.1:5173/> and keep the terminal open while using the app. Local workspaces are stored in this browser. The local backend reads files from the project’s `data/raw/` folder.
+1. **Load source material**: Put the supplied XLSX and PDF files in `data/raw/`. The app discovers supported files and keeps them out of Git.
+2. **Choose project scope**: Open **Data Sources**, select the BMW vehicle series and market, and review the available customer feedback, studies, equipment, and sales context.
+3. **Inspect evidence**: Use the source viewer and Evidence Explorer to open the exact workbook row, sheet, or PDF page behind a record.
+4. **Run source-grounded AI analysis**: Select up to 50 customer feedback records and start analysis. The backend accepts source-backed verbatims only and blocks synthetic records.
+5. **Review generated findings**: AI outputs are proposals, not final decisions. Findings and draft requirements stay linked to the original evidence.
+6. **Prioritize requirements**: Add PM impact, strategy, feasibility, and rationale scores. The platform keeps scoring assumptions versioned and auditable.
+7. **Export and communicate**: Generate PDF reports with source statistics, analysis coverage, requirements, quotations, counterevidence, scoring gaps, and decision history.
 
-A fresh clone contains the application and its history. Put the supplied source XLSX/PDF files in `data/raw/` and configure your own `.env` before using live analysis. Source files, credentials, generated analysis jobs, and browser workspace state are local data and are excluded from Git.
+## Most interesting features
 
-## Project source files
-
-The supplied XLSX and PDF files belong in `data/raw/`, which is inside the project and ignored by Git. The supplied archive’s source files have been extracted there. Do not commit the private workbooks, PDFs, or exported workspaces.
-
-`src/backend/services/source_files.py` provides the reusable `read_source_file(path)` function. It reads any XLSX workbook by sheet and source row, and any PDF by page. The same function is used by the BMW-specific adapters and is exposed in the app’s **Project XLSX and PDF files** viewer. New files placed in `data/raw/` are discovered without hard-coded filenames. Text-based PDF extraction is supported; scanned pages are reported for a separate OCR step.
-
-The reader is ready for XLSX/PDF files saved by a future web collector in the project folder. Fetching files from the web is not part of the current backend workflow.
-
-The supplied feedback workbook totals were independently checked:
-
-| Source workbook | Distinct feedback IDs | Annotation rows |
-| --- | ---: | ---: |
-| F70 | 2,128 | 4,076 |
-| G60 | 4,000 | 5,005 |
-| G70 | 4,000 | 4,690 |
-| **Total** | **10,128** | **13,771** |
-
-Repeated annotation rows remain attached to one feedback record and are counted separately. The library scopes each record by its source vehicle and market. Regional studies, sales, and catalog records remain reference data, not customer complaints.
-
-## Review and analysis
-
-1. Open **Data Sources** and select a vehicle series and market in the BMW data library.
-2. Inspect imported records and open any listed XLSX/PDF file in the project-file viewer.
-3. **Overview** shows distinct comments, annotation rows, and workbook topic counts immediately. **Evidence Explorer** searches the original comments and opens their exact file, sheet, and row references. **Requirements** shows source topics awaiting drafting, and **Prioritization** ranks topics by distinct-comment frequency.
-4. If a server-side model key is configured, choose a 50-comment batch in **Data Sources → Source feedback analysis** and run analysis. The backend validates source type and blocks synthetic records. Model requests process several records or groups together to reduce request overhead.
-5. The progress banner stays visible across pages. Local analysis runs in the backend and resumes polling after a browser refresh; refreshing does not send the same feedback again. Keep the local server running. Job progress and completed results are retained in the ignored `data/analysis-jobs/` folder so the browser can recover and save them to its workspace.
-6. Review **AI findings** in Evidence Explorer and the generated **Requirements**. Check each linked source, then use **Prioritization → Requirement priorities** to supply documented PM impact, strategy, and feasibility judgments. These scores start unset. The **Analysis history** tab records batch coverage, timing, and API usage.
-
-Analysis outputs are proposals for review. Counts describe records in the supplied files, not population prevalence. The app keeps distinct feedback counts separate from raw annotation-row counts.
-
-## Optional live analysis
-
-```sh
-cp .env.example .env
-```
-
-Set `OPENAI_API_KEY` in `.env` and restart the local app. The key stays server-side. Analysis sends selected source-backed feedback to the configured provider; no example feedback is generated or sent.
-
-## PDF reports
-
-Use **Overview → Export PDF** to download a report generated by the local backend. It includes source statistics, analysis coverage, requirements, linked quotations, counterevidence, scoring gaps, and recent PM decisions. Full project totals accompany a bounded detail selection; the report states the limits and any omissions. PDF generation uses ReportLab and does not call the model service.
-
-## Project assistant
-
-**Ask InsightPilot** can explain the current project's counts, customer themes, analysis runs, requirements, evidence gaps, scores, and recent decisions. The assistant receives computed totals for the whole project and a bounded selection of relevant records, with explicit coverage limits. Source quotations and links to requirements, findings, runs, and decisions are checked before display.
-
-Follow-up questions use recent conversation history. Conversations remain separate for each project and persist in the current browser session. **Stop response** cancels a request; failed requests can be retried. Answers from an older workspace revision are marked as out of date. The assistant cannot change or approve project decisions.
-
-Live chat sends the question, recent conversation, and selected project context to OpenAI through the local backend. `OPENAI_CHAT_MODEL` optionally selects the chat model; its default is `gpt-5-mini` with low reasoning effort. Without live AI, the app provides a clearly labelled local project guide. Error messages identify configuration, service, timeout, and evidence-validation problems instead of presenting an unverified model answer.
-
-## Verification
-
-With project dependencies installed:
-
-```sh
-./.venv/bin/python -m unittest discover -s tests -q
-node scripts/sync-backend.mjs
-npm run build
-npm test
-npm run check:edge
-npm run test:db
-```
-
-The Python source-count test compares backend scope statistics to IDs and annotation rows read directly from the supplied workbooks. The generic reader tests cover arbitrary XLSX/PDF filenames, sheet/page provenance, and unsupported formats.
-
-## Data and deployment
-
-The local app stores workspace state in this browser; it does not upload the private files automatically. Supabase migrations and functions are included for a separately provisioned shared deployment. Cloud setup and multiuser behavior must be verified in that environment before use.
+- **Agentic AI framework**: The analysis pipeline is organized as bounded agents that extract, cluster, generate, and validate requirement proposals. The orchestrator owns sequencing, limits, progress reporting, scope isolation, provenance checks, and save eligibility.
+- **Source-grounded outputs**: The system validates quotes and links before displaying AI findings. It keeps customer comments separate from internal reference material to avoid false prevalence claims.
+- **Ask InsightPilot chatbot**: A read-only assistant answers questions about project counts, customer themes, evidence gaps, requirements, analysis runs, priorities, and decisions using the current workspace context.
+- **Voice-enabled assistant**: Users can ask questions through the microphone, receive transcribed prompts, and listen to spoken AI answers. API keys remain server-side.
+- **Traceable file explorer**: XLSX and PDF records can be opened from the app with their original sheet, row, page, and file references.
+- **Resumable analysis jobs**: Long-running local analysis jobs keep progress across page navigation and browser refreshes.
+- **Human-in-the-loop governance**: Requirements require PM review, scoring rationale, and decision history. The assistant cannot approve, reject, or edit project decisions.
