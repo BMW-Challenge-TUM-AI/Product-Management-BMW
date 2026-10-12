@@ -32,8 +32,6 @@ Developed as part of the BMW challenge at a tum.ai EHL Hackathon.
 
 - Ahmed Amine Loukil (https://github.com/AhmedAmineLoukil)
 - Saifeddine Guennana (https://github.com/Saif-Ssj)
-- Yassine Mzabi(https://github.com/yassinemzabi)
-- Youssef Lahdhiri(https://github.com/youssef-lahdhiri)
+- Yassine Mzabi (https://github.com/yassinemzabi)
+- Youssef Lahdhiri (https://github.com/youssef-lahdhiri)
 - Youssef Hakim (https://github.com/YoussefHakim0)
-
-Together, we developed an AI-powered product requirements copilot that transforms customer feedback into evidence-backed requirements and supports transparent, human-in-the-loop product decisions.
